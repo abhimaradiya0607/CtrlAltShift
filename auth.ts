@@ -1,8 +1,70 @@
 import NextAuth from "next-auth";
 import {PrismaAdapter} from "@auth/prisma-adapter";
+import type { Adapter, AdapterAccount } from "next-auth/adapters";
 import { db } from "./lib/db";
 import authConfig from "./auth.config";
 import { getUserById, getAccountByUserId } from "./features/auth/actions";
+
+type OAuthAccount = {
+    type: string
+    provider: string
+    providerAccountId: string
+    access_token?: string | null
+    refresh_token?: string | null
+    expires_at?: number | null
+    token_type?: string | null
+    scope?: string | null
+    id_token?: string | null
+    session_state?: string | null
+}
+
+function toPrismaAccount(account: OAuthAccount) {
+    return {
+        type: account.type,
+        provider: account.provider,
+        providerAccountId: account.providerAccountId,
+        accessToken: account.access_token,
+        refreshToken: account.refresh_token,
+        expiresAt:
+            typeof account.expires_at === "number"
+                ? Math.trunc(account.expires_at)
+                : undefined,
+        tokenType: account.token_type,
+        scope: account.scope,
+        idToken: account.id_token,
+        sessionState:
+            typeof account.session_state === "string"
+                ? account.session_state
+                : undefined,
+    }
+}
+
+const baseAdapter = PrismaAdapter(db)
+
+const adapter: Adapter = {
+    ...baseAdapter,
+    createUser: async (data) => {
+        const user = await db.user.create({
+            data: {
+                name: data.name,
+                email: data.email,
+                image: data.image,
+            },
+        })
+        return {
+            id: user.id,
+            name: user.name,
+            email: user.email,
+            image: user.image,
+            emailVerified: null,
+        }
+    },
+    linkAccount: (account) =>
+        baseAdapter.linkAccount!({
+            ...toPrismaAccount(account),
+            userId: account.userId,
+        } as AdapterAccount),
+}
 
 
 export const {auth, handlers, signIn, signOut} = NextAuth({
@@ -25,14 +87,7 @@ export const {auth, handlers, signIn, signOut} = NextAuth({
                 name:user.name,
                 image:user.image,
                 accounts:{
-                    create:{
-                        type:account.type,
-                        provider:account.provider,
-                        providerAccountId:account.providerAccountId,
-                        access_token:account.access_token,
-                        refresh_token:account.refresh_token,
-                        expires_at:account.expires_at,
-                    },
+                    create: toPrismaAccount(account),
                 },
             },
         });
@@ -54,17 +109,7 @@ export const {auth, handlers, signIn, signOut} = NextAuth({
             const newAccount=await db.account.create({
                 data:{
                     userId:exisitingUser.id,
-                    type:account.type,
-                    provider:account.provider,
-                    providerAccountId:account.providerAccountId,
-                    access_token:account.access_token,
-                    refresh_token:account.refresh_token,
-                    expires_at:account.expires_at,
-                    token_type:account.token_type,
-                    scope:account.scope,
-                    id_token:account.id_token,
-                    session_state:typeof account.session_state === "string" ? account.session_state : null,
-
+                    ...toPrismaAccount(account),
                 },
             });
             if(!newAccount){
@@ -101,7 +146,7 @@ export const {auth, handlers, signIn, signOut} = NextAuth({
         return session;
     }
 } ,
-    adapter:PrismaAdapter(db),
+    adapter,
     session:{
         strategy:'jwt',
     },
