@@ -9,29 +9,35 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { cn } from "@/lib/utils";
 import { LogOut, User } from "lucide-react";
 import LogoutButton from "./LogoutButton";
 import { useCurrentUser } from "../hooks/use-current-user";
 
-const UserButton = () => {
+const UserButton = ({ size = "default" }: { size?: "default" | "lg" }) => {
 
   const user = useCurrentUser()
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger>
-        <div className={cn("relative rounded-full")}>
-          <Avatar>
-            <AvatarImage src={user?.image ?? undefined} alt={user?.name ?? undefined} />
-            <AvatarFallback className="bg-red-500">
-              <User className="text-white" />
-            </AvatarFallback>
-          </Avatar>
-        </div>
+      <DropdownMenuTrigger
+        className={
+          size === "lg"
+            ? "rounded-full outline-none transition-opacity duration-200 hover:opacity-90 focus-visible:ring-2 focus-visible:ring-ring"
+            : "rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        }
+      >
+        <Avatar
+          size={size === "lg" ? "lg" : "default"}
+          className={size === "lg" ? "after:border-white/12" : undefined}
+        >
+          <AvatarImage src={user?.image ?? undefined} alt={user?.name ?? undefined} />
+          <AvatarFallback>
+            <User className="size-4" />
+          </AvatarFallback>
+        </Avatar>
       </DropdownMenuTrigger>
 
-    <DropdownMenuContent className="mr-4">
+    <DropdownMenuContent align="end" sideOffset={8} className="min-w-48">
       <DropdownMenuItem>
         <span>
           {user?.email}
