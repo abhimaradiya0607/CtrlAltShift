@@ -6,12 +6,25 @@ import { Plus } from 'lucide-react'
 import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
+import TemplateSelectionModal from './template-selection-modal'
 
 
 const AddNewButton = () => {
-  return (
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedTemplate, setSelectedTemplate] = useState<
+  {
+    title:string;
+    template:"REACT" | "NEXTJS" | "ANGULAR" | "VUE" | "EXPRESS" | "HONO" | "SVELTE" | "ASTRO";
+    description?:string;
+  }|null>(null);
 
-    <div className="group px-6 py-6 flex flex-row justify-between items-center border rounded-lg bg-muted cursor-pointer 
+
+
+  return (
+    <>
+    <div 
+    onClick={()=>setIsModalOpen(true)}
+    className="group px-6 py-6 flex flex-row justify-between items-center border rounded-lg bg-muted cursor-pointer 
     transition-all duration-300 ease-in-out
     hover:bg-background hover:border-[#A3E635] hover:scale-[1.02]
     shadow-[0_2px_10px_rgba(0,0,0,0.08)]
@@ -35,6 +48,14 @@ const AddNewButton = () => {
       <Image src='/add-new.svg' alt='Create new PlayGround' width={120} height={120} className='transtion-transform duration-300 group-hover:scale-110' />
     </div>
     </div>
+
+
+    <TemplateSelectionModal
+    isOpen={isModalOpen}
+    onClose={()=>setIsModalOpen(false)}
+    onSubmit={()=>{}}
+    />
+    </>
   )
 }
 
