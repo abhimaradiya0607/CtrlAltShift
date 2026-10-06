@@ -20,6 +20,17 @@ enum UserRole {
   PREMIUM_USER
 }
 
+enum Templates {
+  REACT
+  ANGULAR
+  VUE
+  NEXTJS
+  SVELTE
+  ASTRO
+  EXPRESS
+  HONO
+}
+
 model User {
   id            String          @id @default(cuid()) @map("_id") 
   name          String?
@@ -27,6 +38,10 @@ model User {
   image         String?
 
   accounts Account[]
+  myplayground Playground[]
+  starredPlayground StarMark[]
+
+
   role        UserRole            @default(USER)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -50,4 +65,33 @@ model Account {
 
   @@unique([provider, providerAccountId])
   @@index([userId])
+}
+
+model Playground {
+  id String @id @default(cuid()) @map("_id")
+  title String
+  description String?
+  template Templates  @default(REACT)
+  Starmark StarMark[]
+
+  userId String
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+}
+
+model StarMark {
+  id String @id @default(cuid()) @map("_id")
+  userId String
+  playgroundId String
+  isMarked Boolean @default(false)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  playground Playground @relation(fields: [playgroundId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, playgroundId])
 }
