@@ -7,6 +7,8 @@ import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import TemplateSelectionModal from './template-selection-modal'
+import { toast } from 'sonner'
+import { createPlayground } from '../actions'
 
 
 const AddNewButton = () => {
@@ -18,7 +20,21 @@ const AddNewButton = () => {
     description?:string;
   }|null>(null);
 
+  const router=useRouter();
 
+  
+  const handleSubmit = async (data: {
+    title: string;
+    template: "REACT" | "NEXTJS" | "ANGULAR" | "VUE" | "EXPRESS" | "HONO" | "SVELTE" | "ASTRO";
+    description?: string;
+  }) => {
+
+    setSelectedTemplate(data);
+    const response=await createPlayground(data);
+    toast.success('Playground created successfully');
+    setIsModalOpen(false);
+    router.push(`/playground/${(response as {id:string}).id}`);
+  }
 
   return (
     <>
@@ -35,7 +51,7 @@ const AddNewButton = () => {
       variant={'outline'}
       className="flex justify-center items-center bg-white group-hover:bg-[#fff8f8] group-hover:border-[#A3E635] group-hover:text-[#A3E635] transition-colors duration-300"
       size={'icon'}
-      >
+      >å
         <Plus size={30} className='transition-transform duration-300 group-hover:rotate-90' />
        </Button>
        <div className='flex flex-col'>
@@ -53,7 +69,7 @@ const AddNewButton = () => {
     <TemplateSelectionModal
     isOpen={isModalOpen}
     onClose={()=>setIsModalOpen(false)}
-    onSubmit={()=>{}}
+    onSubmit={handleSubmit}
     />
     </>
   )

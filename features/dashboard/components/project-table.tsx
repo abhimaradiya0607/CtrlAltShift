@@ -40,6 +40,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -110,7 +111,12 @@ const ProjectTable = ({projects,onDeleteProject,onUpdateProject,onDuplicateProje
     }
   return (
     <>
-    <div className="border rounded-lg overflow-hidden">
+    <div className="relative border rounded-lg overflow-hidden">
+        {isLoading ? (
+          <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/60">
+            <Spinner className="size-6 text-[#A3E635]" />
+          </div>
+        ) : null}
         <Table>
             <TableHeader>
                 <TableRow>
