@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import { LogoutButtonProps } from '../types';
 import {useRouter} from 'next/navigation';
 import {signOut} from 'next-auth/react';
-import { Loader2 } from 'lucide-react';
+import { Spinner } from '@/components/ui/spinner';
 
 
 
@@ -23,7 +23,7 @@ const LogoutButton = ({children}: LogoutButtonProps) => {
     }
     return (
         <span className='cursor-pointer' onClick={handleLogout}>
-            {isLoading ? <Loader2 className='animate-spin' /> : children}
+            {isLoading ? <Spinner className="size-4 text-[#A3E635]" /> : children}
         </span>
     );
 }
