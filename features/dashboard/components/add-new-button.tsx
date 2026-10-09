@@ -51,7 +51,7 @@ const AddNewButton = () => {
       variant={'outline'}
       className="flex justify-center items-center bg-white group-hover:bg-[#fff8f8] group-hover:border-[#A3E635] group-hover:text-[#A3E635] transition-colors duration-300"
       size={'icon'}
-      >å
+      >
         <Plus size={30} className='transition-transform duration-300 group-hover:rotate-90' />
        </Button>
        <div className='flex flex-col'>

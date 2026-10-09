@@ -92,23 +92,69 @@ const ProjectTable = ({projects,onDeleteProject,onUpdateProject,onDuplicateProje
         if(!onDuplicateProject) return;
         setIsLoading(true);
         try {
-            
+            await onDuplicateProject(project.id);
+            toast.success("Project duplicated successfully");
         } catch (error) {
-            
+            toast.error("Failed to duplicate project");
         }finally{
             setIsLoading(false);
         }
     }
     const handleDeleteClick=async(project:Project)=>{
-        
+        setSelectedProject(project);
+        setDeleteDialogOpen(true);
     }
 
     const handleEditClick=async(project:Project)=>{
-        
+        setSelectedProject(project);
+        setEditData({
+          title:project.title,
+          description:project.description||"",
+        });
+        setEditDialogOpen(true);
     }
+
     const copyProjectUrl=async(projectId:string)=>{
-        
+        try {
+            const url=window.location.origin + `/playground/${projectId}`;
+            navigator.clipboard.writeText(url);
+            toast.success("Project URL copied to clipboard");
+        } catch (error) {
+            toast.error("Failed to copy project URL");
+        }finally{
+            setIsLoading(false);
+        }
     }
+
+    const handleUpdateProject=async()=>{
+        if(!onUpdateProject || !selectedProject) return;
+        setIsLoading(true);
+        try {
+            await onUpdateProject(selectedProject.id,editData);
+            setEditDialogOpen(false);
+            setSelectedProject(null);
+            toast.success("Project updated successfully");
+        } catch (error) {
+            toast.error("Failed to update project");
+        }finally{
+            setIsLoading(false);
+        }
+    }
+    const handleDeleteProject=async()=>{
+        if(!onDeleteProject || !selectedProject) return;
+        setIsLoading(true);
+        try {
+            await onDeleteProject(selectedProject.id);
+            setDeleteDialogOpen(false);
+            setSelectedProject(null);
+            toast.success("Project deleted successfully");
+        } catch (error) {
+            toast.error("Failed to delete project");
+        }finally{
+            setIsLoading(false);
+        }
+    }
+
   return (
     <>
     <div className="relative border rounded-lg overflow-hidden">
@@ -135,6 +181,7 @@ const ProjectTable = ({projects,onDeleteProject,onUpdateProject,onDuplicateProje
                         <Link href={`/playground/${project.id}`} className="hover:underline">
                         <span className="font-semibold">{project.title}</span>
                         </Link>
+                        <span className="text-sm text-gray-500 line-clamp-1">{project.description}</span>
                         </div>
                         </TableCell>
                         <TableCell>
@@ -231,6 +278,78 @@ const ProjectTable = ({projects,onDeleteProject,onUpdateProject,onDuplicateProje
             </TableBody>
         </Table>
 </div>
+<Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+  <DialogContent className="sm:max-w-[425px]">
+    <DialogHeader>
+      <DialogTitle>Edit Project</DialogTitle>
+      <DialogDescription>
+        Make changes to your project here. Click save when you're done.
+      </DialogDescription>
+    </DialogHeader>
+    <div className="grid gap-4 py-4">
+      <div className="grid gap-2">
+                <Label htmlFor="title" className="text-sm font-medium">Project Title</Label>
+                <Input
+                  id="title"
+                  placeholder="Enter project title"
+                  value={editData.title}
+                  onChange={(e) => setEditData((prev)=>({...prev,title:e.target.value}))}
+                  className="mt-1"
+                />
+      </div>
+      <div className="grid gap-2">
+                <Label htmlFor="title" className="text-sm font-medium">Description</Label>
+                <Textarea
+                  id="description"
+                  placeholder="Enter project description"
+                  value={editData.description}
+                  onChange={(e) => setEditData((prev)=>({...prev,description:e.target.value}))}
+                  className="mt-1"
+                  rows={4}
+                />
+      </div>
+    </div>
+    <DialogFooter>
+      <Button type="button" variant="outline" onClick={() => setEditDialogOpen(false)} disabled={isLoading}>Cancel</Button>
+      <Button type="button" variant="default" onClick={handleUpdateProject}> 
+        {
+          isLoading ? (
+            <Spinner className="size-4 text-[#A3E635]" />
+          ) : (
+            "Save Changes"
+          )
+      }
+      </Button>
+    </DialogFooter>
+  </DialogContent>
+</Dialog>
+<AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+  <AlertDialogContent>
+    <AlertDialogHeader>
+      <AlertDialogTitle>Delete Project</AlertDialogTitle>
+      <AlertDialogDescription>
+        Are you sure you want to delete <span className="text-destructive font-semibold ">
+        "{selectedProject?.title}"
+          </span> ? This action cannot be undone.All files and data 
+        associated with this project will be permanently removed.
+      </AlertDialogDescription>
+    </AlertDialogHeader>
+    <AlertDialogFooter>
+      <AlertDialogCancel type="button" disabled={isLoading}>Cancel</AlertDialogCancel>
+      <AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90" disabled={isLoading} onClick={handleDeleteProject}>
+        <Trash2 className="h-4 w-4 mr-2" />
+        {
+          isLoading ? (
+            <Spinner className="size-4 text-[#A3E635]" />
+          ) : (
+            "Confirm Delete"
+          )
+        }
+
+      </AlertDialogAction>
+    </AlertDialogFooter>
+  </AlertDialogContent>
+</AlertDialog>
     </>
  
   )
