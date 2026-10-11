@@ -82,8 +82,8 @@ export const useFileExplorer = create<FileExplorerState>((set, get) => ({
 
     openFile: (file: TemplateFile) => {
         const fileId = generateFileId(file, get().templateData!);
-        const {openFile} =get();
-        const existingFile = openFile.find((f) => f.id === fileId);
+        const {openFiles} =get();
+        const existingFile = openFiles.find((f) => f.id === fileId);
         if (existingFile) {
             set({ activeFileId: fileId ,editorContent: existingFile.content});
             return;
@@ -106,8 +106,8 @@ export const useFileExplorer = create<FileExplorerState>((set, get) => ({
         const newFiles = openFiles.filter((file) => file.id !== fileId);
 
         //if we are closing the active file, switch to another file or clear active
-        const newActiveFileId = activeFileId;
-        const newEditorContent =get().editorContent;
+        let newActiveFileId = activeFileId;
+        let newEditorContent =get().editorContent;
 
         if(activeFileId === fileId){
             if(newFiles.length > 0){
