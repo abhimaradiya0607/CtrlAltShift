@@ -1,7 +1,7 @@
 "use client";
 import React, { useState } from "react";
 import { FilePlus, FolderPlus, Plus } from "lucide-react";
-import { SidebarMenu, SidebarRail } from "@/components/ui/sidebar";
+import { SidebarMenu } from "@/components/ui/sidebar";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -54,6 +54,7 @@ interface TemplateFileTreeProps {
     newFoldername: string,
     parentPath: string,
   ) => void;
+  open?: boolean;
 }
 
 const TemplateFileTree = ({
@@ -67,8 +68,31 @@ const TemplateFileTree = ({
   onDeleteFolder,
   onRenameFile,
   onRenameFolder,
+  open = true,
 }: TemplateFileTreeProps) => {
   const isRootFolder = data && typeof data === "object" && "folderName" in data;
+  const [width, setWidth] = useState(256);
+  const [dragging, setDragging] = useState(false);
+
+  const onResizeStart = (event: React.PointerEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const startX = event.clientX;
+    const startWidth = width;
+    setDragging(true);
+
+    const onMove = (moveEvent: PointerEvent) => {
+      const next = Math.min(480, Math.max(220, startWidth + moveEvent.clientX - startX));
+      setWidth(next);
+    };
+    const onUp = () => {
+      setDragging(false);
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  };
   const [isNewFileDialogOpen, setIsNewFileDialogOpen] = React.useState(false);
   const [isNewFolderDialogOpen, setIsNewFolderDialogOpen] =
     React.useState(false);
@@ -82,7 +106,10 @@ const TemplateFileTree = ({
   };
 
   return (
-    <aside className="flex h-svh w-64 shrink-0 flex-col border-r bg-sidebar text-sidebar-foreground">
+    <aside
+      className={`relative flex h-svh min-w-0 shrink-0 flex-col overflow-hidden border-r bg-sidebar text-sidebar-foreground ${dragging ? "" : "transition-[width] duration-200"} ${open ? "" : "border-transparent"}`}
+      style={{ width: open ? width : 0 }}
+    >
       <div className="flex h-10 shrink-0 items-center justify-between border-b px-3">
         <span className="text-sm font-medium">{title ?? "File Explorer"}</span>
         <DropdownMenu>
@@ -139,12 +166,20 @@ const TemplateFileTree = ({
             />
           )}
         </SidebarMenu>
-        <SidebarRail/>
         <NewFileDialog isOpen={isNewFileDialogOpen} onClose={() => setIsNewFileDialogOpen(false)} onCreateFile={()=>{}} />
         <NewFolderDialog isOpen={isNewFolderDialogOpen} onClose={() => setIsNewFolderDialogOpen(false)} onCreateFolder={()=>{}} />
         {/* <RenameFileDialog isOpen={isRenameFileDialogOpen} onClose={() => setIsRenameFileDialogOpen(false)} onRename={onRenameFile} currentFilename={currentFilename} currentExtension={currentExtension} />
         <RenameFolderDialog isOpen={isRenameFolderDialogOpen} onClose={() => setIsRenameFolderDialogOpen(false)} onRename={onRenameFolder} currentFolderName={currentFolderName} /> */}
       </div>
+      {open ? (
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize file explorer"
+          onPointerDown={onResizeStart}
+          className="absolute inset-y-0 right-0 z-20 w-1.5 cursor-col-resize hover:bg-primary/40"
+        />
+      ) : null}
     </aside>
   );
 };
