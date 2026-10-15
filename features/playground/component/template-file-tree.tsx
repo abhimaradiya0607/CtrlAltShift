@@ -105,6 +105,30 @@ const TemplateFileTree = ({
     setIsNewFolderDialogOpen(true);
   };
 
+  const handleCreateFile = (filename: string, extension: string) => {
+    if(onAddFile && isRootFolder){
+      const newFile:TemplateFile = {
+        filename,
+        fileExtension:extension,
+        content:"",
+      };
+      onAddFile(newFile,"");
+    } 
+    setIsNewFileDialogOpen(false);
+  };
+  
+
+  const handleCreateFolder = (folderName: string) => {
+    if(onAddFolder && isRootFolder){
+      const newFolder:TemplateFolder = {
+        folderName,
+        items:[],
+      };
+      onAddFolder(newFolder,"");
+    }
+    setIsNewFolderDialogOpen(false);
+  };
+
   return (
     <aside
       className={`relative flex h-svh min-w-0 shrink-0 flex-col overflow-hidden border-r bg-sidebar text-sidebar-foreground ${dragging ? "" : "transition-[width] duration-200"} ${open ? "" : "border-transparent"}`}
@@ -166,8 +190,8 @@ const TemplateFileTree = ({
             />
           )}
         </SidebarMenu>
-        <NewFileDialog isOpen={isNewFileDialogOpen} onClose={() => setIsNewFileDialogOpen(false)} onCreateFile={()=>{}} />
-        <NewFolderDialog isOpen={isNewFolderDialogOpen} onClose={() => setIsNewFolderDialogOpen(false)} onCreateFolder={()=>{}} />
+        <NewFileDialog isOpen={isNewFileDialogOpen} onClose={() => setIsNewFileDialogOpen(false)} onCreateFile={handleCreateFile} />
+        <NewFolderDialog isOpen={isNewFolderDialogOpen} onClose={() => setIsNewFolderDialogOpen(false)} onCreateFolder={handleCreateFolder} />
         {/* <RenameFileDialog isOpen={isRenameFileDialogOpen} onClose={() => setIsRenameFileDialogOpen(false)} onRename={onRenameFile} currentFilename={currentFilename} currentExtension={currentExtension} />
         <RenameFolderDialog isOpen={isRenameFolderDialogOpen} onClose={() => setIsRenameFolderDialogOpen(false)} onRename={onRenameFolder} currentFolderName={currentFolderName} /> */}
       </div>

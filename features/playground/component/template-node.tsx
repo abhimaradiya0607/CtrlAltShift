@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils'
 import type { TemplateFile, TemplateFolder, TemplateItem } from '../lib/path-to-json'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Button } from '@/components/ui/button'
-import { NewFileDialog, RenameFolderDialog } from './template-file-tree'
+import { NewFileDialog, RenameFileDialog, RenameFolderDialog } from './template-file-tree'
 import { NewFolderDialog } from './template-file-tree'
 import { AlertDialog, AlertDialogHeader, AlertDialogContent, AlertDialogTrigger, AlertDialogTitle, AlertDialogAction, AlertDialogCancel, AlertDialogDescription, AlertDialogFooter } from '@/components/ui/alert-dialog'
 
@@ -106,6 +106,32 @@ const TemplateNode = ({
                     </DropdownMenuContent>
                 </DropdownMenu>
             </div>
+            <RenameFileDialog
+            isOpen={isRenameDialogOpen}
+            onClose={() => setIsRenameDialogOpen(false)}
+            onRename={handleRenameSubmit}
+            currentFilename={file.filename}
+            currentExtension={file.fileExtension}
+            />
+            <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Delete File</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Are you sure you want to delete "{filename}"? This action cannot be undone.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={confirmDelete}
+                    className={cn("bg-destructive text-destructive-foreground hover:bg-destructive/90")}
+                  >
+                    Delete
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
         </SidebarMenuItem>
         );
     }
