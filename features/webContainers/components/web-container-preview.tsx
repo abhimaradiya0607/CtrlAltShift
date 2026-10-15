@@ -1,295 +1,584 @@
-'use client';
-import { TemplateFolder } from '@/features/playground/lib/path-to-json';
-import { WebContainer } from '@webcontainer/api';
-import React, { useEffect, useState,useCallback } from 'react'
-import { transformToWebContainerFormat } from '../hooks/transformer';
-import { CheckCircle, Loader2, XCircle } from 'lucide-react';
-import { Progress } from '@/components/ui/progress';
 
-let devServerProcess: { kill: () => void } | null = null;
+"use client";
+
+import React, { useEffect, useRef, useState } from "react";
+import type { TemplateFolder } from "@/features/playground/lib/path-to-json";
+import { transformToWebContainerFormat } from "../hooks/transformer";
+import { CheckCircle, Loader2, XCircle } from "lucide-react";
+import { Progress } from "@/components/ui/progress";
+import TerminalComponent, { type TerminalRef } from "./terminal";
+import type {
+  WebContainer,
+  WebContainerProcess,
+} from "@webcontainer/api";
 
 interface WebContainerPreviewProps {
-    templateData: TemplateFolder;
-    serverUrl: string;
-    isLoading: boolean;
-    error: string | null;
-    instance: WebContainer | null;
-    writeFileSync: (path: string, content: string) => Promise<void>;
-    forceResetup?:boolean
+  templateData: TemplateFolder;
+  serverUrl: string;
+  isLoading: boolean;
+  error: string | null;
+  instance: WebContainer | null;
+  writeFileSync: (path: string, content: string) => Promise<void>;
+  forceResetup?: boolean;
 }
 
+type LoadingState = {
+  transforming: boolean;
+  mounting: boolean;
+  installing: boolean;
+  starting: boolean;
+  ready: boolean;
+};
 
-const WebContainerPreview = ({ templateData, serverUrl, isLoading, error, instance, writeFileSync, forceResetup }: WebContainerPreviewProps) => {
-  const [previewUrl, setPreviewUrl] = useState<string>("");
-  const [loadingState,setLoadingState]=useState({
-    transforming:false,
-    mounting:false,
-    installing:false,
-    starting:false,
-    ready:false,
-  });
+type StartCommand = {
+  script: string;
+  args: string[];
+};
 
-  const [currentStep,setCurrentStep]=useState(0);
-  const totalSteps=4;
-  const [setupError,setSetupError]=useState<string | null>(null);
-  const [isSetupComplete,setIsSetupComplete]=useState(false);
-  const [isSetupInProgress,setIsSetupInProgress]=useState(false);
+const INITIAL_LOADING_STATE: LoadingState = {
+  transforming: false,
+  mounting: false,
+  installing: false,
+  starting: false,
+  ready: false,
+};
 
-  useEffect(()=>{
-    if(forceResetup){
-      setIsSetupComplete(false);
-      setIsSetupInProgress(false);
+const WebContainerPreview: React.FC<WebContainerPreviewProps> = ({
+  templateData,
+  error,
+  instance,
+  isLoading,
+  serverUrl,
+  forceResetup = false,
+}) => {
+  const [previewUrl, setPreviewUrl] = useState("");
+  const [loadingState, setLoadingState] =
+    useState<LoadingState>(INITIAL_LOADING_STATE);
+  const [currentStep, setCurrentStep] = useState(0);
+  const [setupError, setSetupError] = useState<string | null>(null);
+  const [isSetupInProgress, setIsSetupInProgress] = useState(false);
+
+  const terminalRef = useRef<TerminalRef>(null);
+  const serverProcessRef = useRef<WebContainerProcess | null>(null);
+  const removeServerReadyListenerRef = useRef<(() => void) | null>(null);
+
+  const setupCompleteRef = useRef(false);
+  const lastTemplateRef = useRef<TemplateFolder | null>(null);
+  const setupRunIdRef = useRef(0);
+  const setupTaskRef = useRef<Promise<void>>(Promise.resolve());
+
+  const totalSteps = 4;
+
+  const writeTerminal = (message: string) => {
+    terminalRef.current?.writeToTerminal(message);
+  };
+
+  const resetLoadingState = () => {
+    setLoadingState(INITIAL_LOADING_STATE);
+  };
+
+  const setStep = (step: number, active: keyof LoadingState) => {
+    setCurrentStep(step);
+    setLoadingState({
+      ...INITIAL_LOADING_STATE,
+      [active]: true,
+    });
+  };
+
+  const clearServerReadyListener = () => {
+    removeServerReadyListenerRef.current?.();
+    removeServerReadyListenerRef.current = null;
+  };
+
+  const stopActiveServer = () => {
+    try {
+      serverProcessRef.current?.kill();
+    } catch {
+      // The process may already have stopped.
+    }
+
+    serverProcessRef.current = null;
+  };
+
+  const streamProcessOutput = async (
+    process: WebContainerProcess,
+    label: string
+  ) => {
+    const reader = process.output.getReader();
+
+    try {
+      while (true) {
+        const { value, done } = await reader.read();
+
+        if (done) break;
+
+        if (value) {
+          writeTerminal(value);
+        }
+      }
+    } catch (streamError) {
+      console.debug(`WebContainer ${label} output ended:`, streamError);
+    } finally {
+      try {
+        reader.releaseLock();
+      } catch {
+        // The stream may already have been released.
+      }
+    }
+  };
+
+  const withTimeout = async <T,>(
+    promise: Promise<T>,
+    timeoutMs: number,
+    message: string
+  ): Promise<T> => {
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
+    try {
+      return await Promise.race([
+        promise,
+        new Promise<T>((_, reject) => {
+          timeoutId = setTimeout(() => reject(new Error(message)), timeoutMs);
+        }),
+      ]);
+    } finally {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+    }
+  };
+
+  const getStartCommand = async (
+    container: WebContainer
+  ): Promise<StartCommand> => {
+    const packageJsonText = await container.fs.readFile(
+      "package.json",
+      "utf-8"
+    );
+
+    let packageJson: { scripts?: Record<string, unknown> };
+
+    try {
+      packageJson = JSON.parse(packageJsonText);
+    } catch {
+      throw new Error("The mounted package.json is not valid JSON.");
+    }
+
+    const scripts = packageJson.scripts ?? {};
+
+    const script = ["dev", "start", "serve"].find(
+      (name) => typeof scripts[name] === "string" && scripts[name].trim()
+    );
+
+    if (!script) {
+      throw new Error(
+        'No usable "dev", "start", or "serve" script was found in package.json.'
+      );
+    }
+
+    const scriptCommand = scripts[script] as string;
+
+    // Expose common development servers to WebContainer.
+    if (/\bnext\s+(dev|start)\b/.test(scriptCommand)) {
+      return {
+        script,
+        args: ["--", "--hostname", "0.0.0.0"],
+      };
+    }
+
+    if (
+      /\b(vite|astro|webpack-dev-server|ng\s+serve)\b/.test(scriptCommand)
+    ) {
+      return {
+        script,
+        args: ["--", "--host", "0.0.0.0"],
+      };
+    }
+
+    return { script, args: [] };
+  };
+
+  useEffect(() => {
+    if (serverUrl) {
+      setPreviewUrl(serverUrl);
+    }
+  }, [serverUrl]);
+
+  useEffect(() => {
+    if (!forceResetup) return;
+
+    setupRunIdRef.current += 1;
+    setupCompleteRef.current = false;
+    lastTemplateRef.current = null;
+
+    clearServerReadyListener();
+    stopActiveServer();
+
+    setPreviewUrl("");
+    setSetupError(null);
+    setCurrentStep(0);
+    setIsSetupInProgress(false);
+    resetLoadingState();
+  }, [forceResetup]);
+
+  useEffect(() => {
+    if (!instance || !templateData || Object.keys(templateData).length === 0) {
+      return;
+    }
+
+    const isSameCompletedTemplate =
+      setupCompleteRef.current && lastTemplateRef.current === templateData;
+
+    if (isSameCompletedTemplate && !forceResetup) {
+      return;
+    }
+
+    let cancelled = false;
+    const runId = ++setupRunIdRef.current;
+    const previousTask = setupTaskRef.current;
+
+    const isCurrentRun = () =>
+      !cancelled && setupRunIdRef.current === runId;
+
+    const setupContainer = async () => {
+      // Wait for an in-flight setup to finish before mounting another starter.
+      await previousTask.catch(() => undefined);
+
+      if (!isCurrentRun()) return;
+
+      clearServerReadyListener();
+      stopActiveServer();
+
+      setIsSetupInProgress(true);
+      setSetupError(null);
       setPreviewUrl("");
       setCurrentStep(0);
-      setLoadingState({
-        transforming:false,
-        mounting:false,
-        installing:false,
-        starting:false,
-        ready:false,
-      });
-    }
-  },[forceResetup]);
+      setupCompleteRef.current = false;
 
-  useEffect(()=>{
-     async function setupContainer() {
-       //Dont run setup container if its already complete or in progress
-       if(!instance|| isSetupComplete|| isSetupInProgress) return;
-       try {
-        setIsSetupInProgress(true);
-        setSetupError(null);
+      try {
+        writeTerminal("\r\nPreparing project...\r\n");
 
-        //step-1 :tarnsform data to webcontainer format
-        setLoadingState((prev)=>({
-          ...prev,
-          transforming:true,
-        }));
-        setCurrentStep(1);
+        setStep(1, "transforming");
+        writeTerminal("Transforming template data...\r\n");
 
-        //terminal related stuff
-         //@ts-ignore
-        const files=transformToWebContainerFormat(templateData);
-        setLoadingState((prev)=>({
-          ...prev,
-          transforming:false,
-          mounting:true,
-        }));
-        setCurrentStep(2);
-       
-        //terminal related stuff
+        const files = transformToWebContainerFormat(templateData);
 
-        await instance.mount(files);
+        if (!isCurrentRun()) return;
 
-        setLoadingState((prev)=>({
-          ...prev,
-          mounting:false,
-          installing:true,
-        }));
-        setCurrentStep(3);
+        setStep(2, "mounting");
+        writeTerminal("Mounting project files...\r\n");
 
-        const installProcess=await instance.spawn("npm",["install"]);
-
-        installProcess.output.pipeTo(
-          new WritableStream({
-            write(data){
-               //write directly on terminal
-            }
-          })
+        // Always mount the selected starter. Do not use an existing
+        // package.json as evidence that this starter is already running.
+        await withTimeout(
+          instance.mount(files),
+          30_000,
+          "Mounting project files timed out. Check the starter file structure."
         );
 
-        const installExistCode=await installProcess.exit;
+        if (!isCurrentRun()) return;
 
-        if(installExistCode!=0){
-          throw new Error(`Failed to install dependencies: ${installExistCode}`);
+        writeTerminal("Files mounted successfully.\r\n");
+
+        setStep(3, "installing");
+        writeTerminal("\r\nInstalling dependencies...\r\n");
+
+        const installProcess = await instance.spawn("npm", ["install"]);
+        const installOutput = streamProcessOutput(
+          installProcess,
+          "npm install"
+        );
+
+        const installExitCode = await installProcess.exit;
+        await installOutput;
+
+        if (!isCurrentRun()) return;
+
+        if (installExitCode !== 0) {
+          throw new Error(
+            `Dependency installation failed with exit code ${installExitCode}.`
+          );
         }
-        setLoadingState((prev)=>({
-          ...prev,
-          installing:false,
-          starting:true,
-        }));
-        setCurrentStep(4);
 
-        const packageJson=JSON.parse(await instance.fs.readFile("package.json","utf-8"));
-        const scripts=packageJson.scripts ?? {};
-        const scriptName=typeof scripts.dev==="string"?"dev":typeof scripts.start==="string"?"start":null;
-        if(!scriptName){
-          throw new Error("package.json has no dev or start script");
-        }
+        writeTerminal("\r\nDependencies installed successfully.\r\n");
 
-        const startArgs=["run",scriptName];
-        const scriptCommand=String(scripts[scriptName]);
-        if(/\b(vite|next|astro|ng)\b/.test(scriptCommand) && !scriptCommand.includes("--host")){
-          startArgs.push("--","--host","0.0.0.0");
-        }
+        setStep(4, "starting");
 
-        devServerProcess?.kill();
+        const startCommand = await getStartCommand(instance);
 
-        const startProcess=await instance.spawn("npm",startArgs);
-        devServerProcess=startProcess;
-        let serverReady=false;
-        let serverOutput="";
+        writeTerminal(
+          `\r\nStarting: npm run ${startCommand.script}${
+            startCommand.args.length
+              ? ` ${startCommand.args.join(" ")}`
+              : ""
+          }\r\n`
+        );
 
-        //Listen for server ready event
-        instance.on("server-ready",(port:number,url:string)=>{
-          serverReady=true;
-          console.log(`Server is running on port ${port} at ${url}`);
-          setPreviewUrl(url);
-          setLoadingState((prev)=>({
-            ...prev,
-            starting:false,
-            ready:true,
-          }));
-          setIsSetupComplete(true);
-          setIsSetupInProgress(false);
+        let serverReady = false;
+        let resolveServerReady!: (url: string) => void;
+
+        const serverReadyPromise = new Promise<string>((resolve) => {
+          resolveServerReady = resolve;
         });
 
-        startProcess.output.pipeTo(
-          new WritableStream({
-            write(data){
-              serverOutput+=data;
-              if(serverOutput.length>2000){
-                serverOutput=serverOutput.slice(-2000);
-              }
-            }
-          })
+        // Register before spawning so fast starters cannot miss the event.
+        removeServerReadyListenerRef.current = instance.on(
+          "server-ready",
+          (_port, url) => {
+            if (!isCurrentRun()) return;
+
+            serverReady = true;
+            resolveServerReady(url);
+          }
         );
 
-        startProcess.exit.then((code)=>{
-          if(!serverReady && code!==0){
-            const details=serverOutput.trim();
-            setSetupError(details?`Development server exited with code ${code}\n${details}`:`Development server exited with code ${code}`);
+        const startProcess = await instance.spawn("npm", [
+          "run",
+          startCommand.script,
+          ...startCommand.args,
+        ]);
+
+        serverProcessRef.current = startProcess;
+
+        const serverOutput = streamProcessOutput(
+          startProcess,
+          "development server"
+        );
+
+        const startupResult = await Promise.race([
+          serverReadyPromise.then((url) => ({
+            type: "ready" as const,
+            url,
+          })),
+          startProcess.exit.then((exitCode) => ({
+            type: "exit" as const,
+            exitCode,
+          })),
+        ]);
+
+        if (!isCurrentRun()) return;
+
+        if (startupResult.type === "exit") {
+          await serverOutput;
+
+          if (!serverReady) {
+            throw new Error(
+              `The "${startCommand.script}" script exited with code ${startupResult.exitCode} before the preview server became ready. Check the terminal output.`
+            );
+          }
+
+          return;
+        }
+
+        clearServerReadyListener();
+
+        setPreviewUrl(startupResult.url);
+        setLoadingState({
+          ...INITIAL_LOADING_STATE,
+          ready: true,
+        });
+
+        setupCompleteRef.current = true;
+        lastTemplateRef.current = templateData;
+
+        writeTerminal(`\r\nPreview ready: ${startupResult.url}\r\n`);
+
+        void serverOutput;
+
+        void startProcess.exit.then((exitCode) => {
+          if (serverProcessRef.current !== startProcess) return;
+
+          serverProcessRef.current = null;
+
+          if (exitCode !== 0) {
+            writeTerminal(
+              `\r\nDevelopment server exited with code ${exitCode}.\r\n`
+            );
+            setSetupError(
+              `The development server exited with code ${exitCode}.`
+            );
+            setupCompleteRef.current = false;
             setIsSetupInProgress(false);
-            setLoadingState((prev)=>({
-              ...prev,
-              starting:false,
-            }));
+            resetLoadingState();
           }
         });
-        
-        
-      } catch (error) {
-        console.error("Error setting up container :",error);
-        const errorMessage=error instanceof Error ? error.message : String(error);
-        setSetupError(errorMessage);
-        setIsSetupComplete(false);
-        setIsSetupInProgress(false);
-        setLoadingState({
-          transforming:false,
-          mounting:false,
-          installing:false,
-          starting:false,
-          ready:false,
-        });
+      } catch (setupFailure) {
+        if (!isCurrentRun()) return;
+
+        const message =
+          setupFailure instanceof Error
+            ? setupFailure.message
+            : String(setupFailure);
+
+        console.error("WebContainer setup failed:", setupFailure);
+        writeTerminal(`\r\nError: ${message}\r\n`);
+
+        clearServerReadyListener();
+        stopActiveServer();
+
+        setSetupError(message);
+        setPreviewUrl("");
+        setCurrentStep(0);
+        setupCompleteRef.current = false;
+        resetLoadingState();
+      } finally {
+        if (isCurrentRun()) {
+          setIsSetupInProgress(false);
+        }
       }
+    };
+
+    const task = setupContainer();
+    setupTaskRef.current = task;
+
+    return () => {
+      cancelled = true;
+      clearServerReadyListener();
+    };
+  }, [instance, templateData, forceResetup]);
+
+  const getStepIcon = (stepIndex: number) => {
+    if (loadingState.ready || stepIndex < currentStep) {
+      return <CheckCircle className="h-5 w-5 text-green-500" />;
     }
-    setupContainer();
-  }, [instance,isSetupComplete,isSetupInProgress,templateData]);
 
-    //cleanup function to memory leaks
-    useEffect(()=>{
-      return ()=>{
-        //dont kill processs or cleanup when component is unmounts
-        //The web container should presist for acrooss component re-mounts
-      }
-    },[]);
+    if (stepIndex === currentStep && isSetupInProgress) {
+      return <Loader2 className="h-5 w-5 animate-spin text-blue-500" />;
+    }
 
-    if(isLoading){
-      <div className="h-full flex items-center justify-center">
-        <div className="text-center space-y-4 max-w-md p-6 rounded-lg bg-gray-50 dark:bg-gray-900">
-        <Loader2 className="h-10 w-10 animate-spin text-primary mx-auto" />
-        <h3 className="text-lg font-medium">Initializing WebContainer...</h3>
-        <p className='text-sm text-gray-500 dark:text-gray-400'>Setting up your project environment. This may take a few seconds...</p>
+    return (
+      <div className="h-5 w-5 rounded-full border-2 border-gray-300" />
+    );
+  };
+
+  const getStepText = (stepIndex: number, label: string) => {
+    const isComplete = loadingState.ready || stepIndex < currentStep;
+    const isActive =
+      stepIndex === currentStep &&
+      isSetupInProgress &&
+      !loadingState.ready;
+
+    return (
+      <span
+        className={`text-sm font-medium ${
+          isComplete
+            ? "text-green-600"
+            : isActive
+              ? "text-blue-600"
+              : "text-gray-500"
+        }`}
+      >
+        {label}
+      </span>
+    );
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <div className="max-w-md space-y-4 rounded-lg bg-gray-50 p-6 text-center dark:bg-gray-900">
+          <Loader2 className="mx-auto h-10 w-10 animate-spin text-primary" />
+          <h3 className="text-lg font-medium">Initializing WebContainer</h3>
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            Setting up the environment for your project...
+          </p>
         </div>
       </div>
-    }
-    if (error || setupError) {
-      return (
-        <div className="h-full flex items-center justify-center">
-          <div className="bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 p-6 rounded-lg max-w-md">
-            <div className="flex items-center gap-2 mb-3">
+    );
+  }
+
+  if (error || setupError) {
+    return (
+      <div className="flex h-full min-h-0 flex-col">
+        <div className="flex flex-1 items-center justify-center">
+          <div className="max-w-md rounded-lg bg-red-50 p-6 text-red-600 dark:bg-red-900/20 dark:text-red-400">
+            <div className="mb-3 flex items-center gap-2">
               <XCircle className="h-5 w-5" />
-              <h3 className="font-semibold">Error</h3>
+              <h3 className="font-semibold">Preview Error</h3>
             </div>
-            <p className="text-sm whitespace-pre-wrap">{error || setupError}</p>
+            <p className="text-sm">{error || setupError}</p>
           </div>
         </div>
-      );
-    }
 
-    const getStepIcon = (stepIndex: number) => {
-      if (stepIndex < currentStep) {
-        return <CheckCircle className="h-5 w-5 text-green-500" />;
-      } else if (stepIndex === currentStep) {
-        return <Loader2 className="h-5 w-5 animate-spin text-blue-500" />;
-      } else {
-        return <div className="h-5 w-5 rounded-full border-2 border-gray-300" />;
-      }
-    };
-
-    const getStepText = (stepIndex: number, label: string) => {
-      const isActive = stepIndex === currentStep;
-      const isComplete = stepIndex < currentStep;
-      
-      return (
-        <span className={`text-sm font-medium ${
-          isComplete ? 'text-green-600' : 
-          isActive ? 'text-blue-600' : 
-          'text-gray-500'
-        }`}>
-          {label}
-        </span>
-      );
-    };
-    
+        <div className="h-64 shrink-0 border-t">
+          <TerminalComponent
+            ref={terminalRef}
+            webContainerInstance={instance}
+            webcontainerUrl={previewUrl}
+            theme="dark"
+            className="h-full"
+          />
+        </div>
+      </div>
+    );
+  }
 
   return (
-  <div className='h-full width-full'>
-    {
-      !previewUrl ? (
-        <div className='h-full flex flex-col'>
-          <div className='h-full max-w-md p-6 m-5 rounded-lg bg-white dark:bg-zinc-800 shadow-sm mx-auto'>
-            <Loader2 className='h-10 w-10 animate-spin text-primary mx-auto' />
-            <h3 className='text-sm text-gray-500 dark:text-gray-400'>Setting up your project environment.</h3>
-            <Progress value={(currentStep/totalSteps)*100} className='h-2 mt-2' />
-            <div className="space-y-4 mt-6">
+    <div className="flex h-full min-h-0 w-full flex-col">
+      {!previewUrl ? (
+        <div className="flex h-full min-h-0 flex-col">
+          <div className="mx-auto m-5 w-full max-w-md rounded-lg bg-white p-6 shadow-sm dark:bg-zinc-800">
+            <Progress
+              value={(currentStep / totalSteps) * 100}
+              className="mb-6 h-2"
+            />
+
+            <div className="mb-6 space-y-4">
               <div className="flex items-center gap-3">
                 {getStepIcon(1)}
-                {getStepText(1,"Transforming template data")}
+                {getStepText(1, "Transforming template data")}
               </div>
+
               <div className="flex items-center gap-3">
                 {getStepIcon(2)}
                 {getStepText(2, "Mounting files")}
               </div>
+
               <div className="flex items-center gap-3">
                 {getStepIcon(3)}
                 {getStepText(3, "Installing dependencies")}
               </div>
+
               <div className="flex items-center gap-3">
                 {getStepIcon(4)}
                 {getStepText(4, "Starting development server")}
               </div>
             </div>
           </div>
-          <div className="flex-1 p-4 ">
-            <h1>Terminal</h1>
+
+          <div className="min-h-0 flex-1 p-4">
+            <TerminalComponent
+              ref={terminalRef}
+              webContainerInstance={instance}
+              webcontainerUrl={previewUrl}
+              theme="dark"
+              className="h-full"
+            />
           </div>
         </div>
       ) : (
-        <div className='h-full flex flex-col'>
-          <div className='flex-1'>
-            <iframe src={previewUrl} className='w-full h-full border-none' title='WebContainer Preview' />
-            
+        <div className="flex h-full min-h-0 flex-col">
+          <div className="min-h-0 flex-1">
+            <iframe
+              src={previewUrl}
+              className="h-full w-full border-none"
+              title="WebContainer Preview"
+            />
           </div>
-          <div className="h-64 border-t ">
-            <h1>Terminal Component</h1>
+
+          <div className="h-64 shrink-0 border-t">
+            <TerminalComponent
+              ref={terminalRef}
+              webContainerInstance={instance}
+              webcontainerUrl={previewUrl}
+              theme="dark"
+              className="h-full"
+            />
           </div>
         </div>
-      )
-    }
-
-
-  </div>
-);
-}
+      )}
+    </div>
+  );
+};
 
 export default WebContainerPreview;
