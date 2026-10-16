@@ -41,6 +41,7 @@ import LoadingStep from "@/components/ui/loader";
 import { findFilePath } from "@/features/playground/lib";
 import { toast } from "sonner";
 import * as React from "react";
+import ToogleAI from "@/features/playground/component/toogle-ai";
 
 export default function PlaygroundPage() {
   const [isPreviewVisible, setIsPreviewVisible] = useState(true);
@@ -505,20 +506,12 @@ export default function PlaygroundPage() {
             <TooltipContent>Save All (Ctrl + Shift + S)</TooltipContent>
           </Tooltip>
           {/* TODO: Toogle Ai */}
-          <Tooltip>
-            <TooltipTrigger className="ml-auto">
-              <Button
-                size={"sm"}
-                variant={"outline"}
-                aria-label="Save"
-                onClick={() => {}}
-                disabled={!activeFile || !activeFile.hasUnsavedChanges}
-              >
-                <BotIcon className="h-4 w-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Toggle AI</TooltipContent>
-          </Tooltip>
+
+          <ToogleAI
+          isEnabled={false}
+          onToggle={()=>{}}
+          suggestionLoading={false}
+          />
           <DropdownMenu>
             <DropdownMenuTrigger>
               <Button size={"sm"} variant={"outline"} aria-label="More options">
