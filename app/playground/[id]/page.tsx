@@ -33,7 +33,11 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TemplateFile, TemplateFolder } from "@/features/playground/types";
-import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
+import {
+  ResizableHandle,
+  ResizablePanel,
+  ResizablePanelGroup,
+} from "@/components/ui/resizable";
 import PlaygroundEditor from "@/features/playground/component/playground-editor";
 import { useWebContainer } from "@/features/webContainers/hooks/usewebContainer";
 import WebContainerPreview from "@/features/webContainers/components/web-container-preview";
@@ -42,6 +46,7 @@ import { findFilePath } from "@/features/playground/lib";
 import { toast } from "sonner";
 import * as React from "react";
 import ToogleAI from "@/features/playground/component/toogle-ai";
+import { useAISuggestions } from "@/features/ai/hooks/useAisuggesition";
 
 export default function PlaygroundPage() {
   const [isPreviewVisible, setIsPreviewVisible] = useState(true);
@@ -55,6 +60,8 @@ export default function PlaygroundPage() {
     loadPlayground,
     saveTemplateData,
   } = usePlayground(id);
+
+  const aiSuggestion = useAISuggestions();
 
   const {
     activeFileId,
@@ -76,14 +83,16 @@ export default function PlaygroundPage() {
     setOpenFiles,
   } = useFileExplorer();
 
-  const { serverUrl,
-     isLoading: isContainerLoading, 
-     error: containerError, 
-     instance, 
-     writeFileSync, 
-     destroy } = useWebContainer({ templateData :templateData!});
+  const {
+    serverUrl,
+    isLoading: isContainerLoading,
+    error: containerError,
+    instance,
+    writeFileSync,
+    destroy,
+  } = useWebContainer({ templateData: templateData! });
 
-    const lastSyncedContent=useRef<Map<string,string>>(new Map());
+  const lastSyncedContent = useRef<Map<string, string>>(new Map());
 
   useEffect(() => {
     setPlaygroundId(id);
@@ -102,7 +111,7 @@ export default function PlaygroundPage() {
         throw new Error("Failed to save template data");
       }
     },
-    [saveTemplateData]
+    [saveTemplateData],
   );
 
   const wrappedHandleAddFile = useCallback(
@@ -112,10 +121,10 @@ export default function PlaygroundPage() {
         parentPath,
         writeFileSync!,
         instance,
-        saveTemplateForExplorer
+        saveTemplateForExplorer,
       );
     },
-    [handleAddFile, writeFileSync, instance, saveTemplateForExplorer]
+    [handleAddFile, writeFileSync, instance, saveTemplateForExplorer],
   );
 
   const wrappedHandleAddFolder = useCallback(
@@ -124,24 +133,24 @@ export default function PlaygroundPage() {
         newFolder,
         parentPath,
         instance,
-        saveTemplateForExplorer
+        saveTemplateForExplorer,
       );
     },
-    [handleAddFolder, instance, saveTemplateForExplorer]
+    [handleAddFolder, instance, saveTemplateForExplorer],
   );
 
   const wrappedHandleDeleteFile = useCallback(
     (file: TemplateFile, parentPath: string) => {
       return handleDeleteFile(file, parentPath, saveTemplateForExplorer);
     },
-    [handleDeleteFile, saveTemplateForExplorer]
+    [handleDeleteFile, saveTemplateForExplorer],
   );
 
   const wrappedHandleDeleteFolder = useCallback(
     (folder: TemplateFolder, parentPath: string) => {
       return handleDeleteFolder(folder, parentPath, saveTemplateForExplorer);
     },
-    [handleDeleteFolder, saveTemplateForExplorer]
+    [handleDeleteFolder, saveTemplateForExplorer],
   );
 
   const wrappedHandleRenameFile = useCallback(
@@ -149,17 +158,17 @@ export default function PlaygroundPage() {
       file: TemplateFile,
       newFilename: string,
       newExtension: string,
-      parentPath: string
+      parentPath: string,
     ) => {
       return handleRenameFile(
         file,
         newFilename,
         newExtension,
         parentPath,
-        saveTemplateForExplorer
+        saveTemplateForExplorer,
       );
     },
-    [handleRenameFile, saveTemplateForExplorer]
+    [handleRenameFile, saveTemplateForExplorer],
   );
 
   const wrappedHandleRenameFolder = useCallback(
@@ -168,10 +177,10 @@ export default function PlaygroundPage() {
         folder,
         newFolderName,
         parentPath,
-        saveTemplateForExplorer
+        saveTemplateForExplorer,
       );
     },
-    [handleRenameFolder, saveTemplateForExplorer]
+    [handleRenameFolder, saveTemplateForExplorer],
   );
 
   const [explorerOpen, setExplorerOpen] = useState(true);
@@ -257,16 +266,25 @@ export default function PlaygroundPage() {
           ? explorerTemplate
           : templateData;
       const openFilesNow = useFileExplorer.getState().openFiles;
-      const filesToSave = openFilesNow.filter((file) => fileIds.includes(file.id));
+      const filesToSave = openFilesNow.filter((file) =>
+        fileIds.includes(file.id),
+      );
 
       if (filesToSave.length === 0) return;
       if (!latestTemplateData || !("items" in latestTemplateData)) {
         throw new Error("Template data is not loaded");
       }
 
-      const updatedTemplateData = JSON.parse(JSON.stringify(latestTemplateData));
+      const updatedTemplateData = JSON.parse(
+        JSON.stringify(latestTemplateData),
+      );
 
-      const replaceFileContent = (items: any[], filePath: string, content: string, pathSoFar: string[] = []): any[] =>
+      const replaceFileContent = (
+        items: any[],
+        filePath: string,
+        content: string,
+        pathSoFar: string[] = [],
+      ): any[] =>
         items.map((item) => {
           if ("folderName" in item) {
             return {
@@ -295,14 +313,14 @@ export default function PlaygroundPage() {
         const filePath = findFilePath(fileToSave, updatedTemplateData);
         if (!filePath) {
           throw new Error(
-            `Could not find file path for ${fileToSave.filename}.${fileToSave.fileExtension}`
+            `Could not find file path for ${fileToSave.filename}.${fileToSave.fileExtension}`,
           );
         }
 
         updatedTemplateData.items = replaceFileContent(
           updatedTemplateData.items,
           filePath,
-          fileToSave.content
+          fileToSave.content,
         );
 
         if (writeFileSync) {
@@ -319,7 +337,9 @@ export default function PlaygroundPage() {
       // saveTemplateData returns a boolean. Keep the folder object in the explorer store.
       setTemplateData(updatedTemplateData);
 
-      const savedById = new Map(filesToSave.map((file) => [file.id, file.content]));
+      const savedById = new Map(
+        filesToSave.map((file) => [file.id, file.content]),
+      );
       setOpenFiles(
         useFileExplorer.getState().openFiles.map((file) => {
           const savedContent = savedById.get(file.id);
@@ -329,10 +349,16 @@ export default function PlaygroundPage() {
             originalContent: savedContent,
             hasUnsavedChanges: file.content !== savedContent,
           };
-        })
+        }),
       );
     },
-    [templateData, writeFileSync, saveTemplateData, setTemplateData, setOpenFiles]
+    [
+      templateData,
+      writeFileSync,
+      saveTemplateData,
+      setTemplateData,
+      setOpenFiles,
+    ],
   );
 
   const handleSave = useCallback(
@@ -348,17 +374,17 @@ export default function PlaygroundPage() {
       try {
         await persistFiles([targetFileId]);
         toast.success(
-          `Saved ${fileToSave.filename}.${fileToSave.fileExtension}`
+          `Saved ${fileToSave.filename}.${fileToSave.fileExtension}`,
         );
       } catch (error) {
         console.error("Error saving file:", error);
         toast.error(
-          `Failed to save ${fileToSave.filename}.${fileToSave.fileExtension}`
+          `Failed to save ${fileToSave.filename}.${fileToSave.fileExtension}`,
         );
         throw error;
       }
     },
-    [activeFileId, persistFiles]
+    [activeFileId, persistFiles],
   );
 
   const handleSaveAll = useCallback(async () => {
@@ -381,22 +407,22 @@ export default function PlaygroundPage() {
   }, [persistFiles]);
 
   React.useEffect(() => {
-   const handleKeyDown = (e: KeyboardEvent) => {
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
-      e.preventDefault();
-      if (e.shiftKey) {
-        handleSaveAll();
-      } else {
-        handleSave();
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
+        e.preventDefault();
+        if (e.shiftKey) {
+          handleSaveAll();
+        } else {
+          handleSave();
+        }
       }
-    }
-   };
-   window.addEventListener("keydown",handleKeyDown);
-   return () => {
-    window.removeEventListener("keydown",handleKeyDown);
-   };
-  },[handleSave,handleSaveAll]);
-  
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [handleSave, handleSaveAll]);
+
   if (error) {
     return (
       <div className="flex flex-col items-center justify-center h-[calc(100vh-4rem)] p-4">
@@ -437,7 +463,6 @@ export default function PlaygroundPage() {
       </div>
     );
   }
-
 
   return (
     <>
@@ -482,7 +507,7 @@ export default function PlaygroundPage() {
                 size={"sm"}
                 variant={"outline"}
                 aria-label="Save"
-                onClick={()=>handleSave()}
+                onClick={() => handleSave()}
                 disabled={!activeFile || !activeFile.hasUnsavedChanges}
               >
                 <Save className="size-4" />
@@ -508,9 +533,9 @@ export default function PlaygroundPage() {
           {/* TODO: Toogle Ai */}
 
           <ToogleAI
-          isEnabled={false}
-          onToggle={()=>{}}
-          suggestionLoading={false}
+            isEnabled={aiSuggestion.isEnabled}
+            onToggle={aiSuggestion.toggleEnabled}
+            suggestionLoading={aiSuggestion.isLoading}
           />
           <DropdownMenu>
             <DropdownMenuTrigger>
@@ -592,22 +617,34 @@ export default function PlaygroundPage() {
                       onContentChange={(value) =>
                         activeFileId && updateFileContent(activeFileId, value)
                       }
+                      suggestion={aiSuggestion.suggestion}
+                      suggestionLoading={aiSuggestion.isLoading}
+                      suggestionPosition={aiSuggestion.position}
+                      onAcceptSuggestion={(editor, monaco) =>
+                        aiSuggestion.acceptSuggestion(editor, monaco)
+                      }
+                      onRejectSuggestion={(editor) =>
+                        aiSuggestion.rejectSuggestion(editor)
+                      }
+                      onTriggerSuggestion={(type, editor) =>
+                        aiSuggestion.fetchSuggestion(type, editor)
+                      }
                     />
                   </ResizablePanel>
                   {isPreviewVisible && (
                     <>
-                    <ResizableHandle/>
-                    <ResizablePanel defaultSize={50}>
-                      <WebContainerPreview 
-                      templateData={templateData!} 
-                      instance={instance}
-                      writeFileSync={writeFileSync}
-                      isLoading={isContainerLoading}
-                      error={containerError} 
-                      serverUrl={serverUrl!}  
-                      forceResetup={false}
-                      />
-                    </ResizablePanel>
+                      <ResizableHandle />
+                      <ResizablePanel defaultSize={50}>
+                        <WebContainerPreview
+                          templateData={templateData!}
+                          instance={instance}
+                          writeFileSync={writeFileSync}
+                          isLoading={isContainerLoading}
+                          error={containerError}
+                          serverUrl={serverUrl!}
+                          forceResetup={false}
+                        />
+                      </ResizablePanel>
                     </>
                   )}
                 </ResizablePanelGroup>
